@@ -27,7 +27,9 @@ import (
 */
 
 var (
-	app = kingpin.New("sport", "Register for Volleyball made easy")
+	app          = kingpin.New("sport", "Register for Volleyball made easy")
+	register     = app.Command("register", "register player for today's course")
+	registerUser = register.Arg("user", "user to register").Required().Strings()
 )
 
 func main() {
