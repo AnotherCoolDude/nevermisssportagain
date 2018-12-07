@@ -3,7 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"os"
 
+	"github.com/alecthomas/kingpin"
 	"github.com/parnurzeal/gorequest"
 )
 
@@ -23,7 +26,12 @@ import (
 11 Fachhochschule der Wirtschaft 			  : 13
 */
 
+var (
+	app = kingpin.New("sport", "Register for Volleyball made easy")
+)
+
 func main() {
+
 	rd := registerData{
 		vorname:    "Christian",
 		nachname:   "Hovenbitzer",
@@ -36,21 +44,13 @@ func main() {
 
 	request := gorequest.New()
 	request.SetDebug(true)
-	mJSON, err := json.Marshal(requestData)
 
-	if err != nil {
-		fmt.Printf("could not marshal struct: %s", err)
-	} else {
-		fmt.Println(string(mJSON))
-	}
 	// url = https://anmeldung.hochschulsport-koeln.de/inc/methods.php
-	_, body, error := request.Post("127.0.0.1:8080/test").Send(string(mJSON)).End()
+	_, body, errors := request.Post("127.0.0.1:8080/test").Send(requestData.jsonString()).End()
 
-	if error != nil {
+	if errors != nil {
 		fmt.Println(request.Data)
-		for e := range error {
-			fmt.Printf("Error from request: %v\n", e)
-		}
+		fmt.Println(errors)
 	} else {
 		fmt.Println(body)
 	}
@@ -78,11 +78,15 @@ type registerData struct {
 	hochschule int
 }
 
+type player struct {
+	data []registerData
+}
+
 func newRequest(rD *registerData) RequestData {
 	return RequestData{
 		State:             "studentAnmelden",
 		TypeStudent:       "student",
-		OfferCourseID:     30,
+		OfferCourseID:     1733,
 		Vorname:           rD.vorname,
 		Nachname:          rD.nachname,
 		Matrikel:          rD.matrikel,
@@ -90,5 +94,39 @@ func newRequest(rD *registerData) RequestData {
 		Hochschulen:       rD.hochschule,
 		Hochschulenextern: "null",
 		Office:            "null",
+	}
+}
+
+func (requestData RequestData) jsonString() string {
+	mJSON, err := json.Marshal(requestData)
+	if err != nil {
+		fmt.Printf("could not marshal struct: %s", err)
+	}
+	return string(mJSON)
+}
+
+func loadPlayer() player {
+	p := player{}
+	if _, err := os.Stat("player.json"); os.IsNotExist(err) {
+		writePlayer(&p)
+		return p
+	}
+	bPlayer, err := ioutil.ReadFile("player.json")
+	handleError(err)
+	err = json.Unmarshal(bPlayer, p)
+	handleError(err)
+	return p
+}
+
+func writePlayer(p *player) {
+	pJSON, err := json.Marshal(p)
+	handleError(err)
+	err = ioutil.WriteFile("player.json", pJSON, 0644)
+	handleError(err)
+}
+
+func handleError(e error) {
+	if e != nil {
+		fmt.Println(e.Error())
 	}
 }
