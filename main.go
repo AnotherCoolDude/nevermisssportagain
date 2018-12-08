@@ -6,8 +6,27 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/alecthomas/kingpin"
-	"github.com/parnurzeal/gorequest"
+	"gopkg.in/alecthomas/kingpin.v2"
+)
+
+const (
+	unis = `
+University								   : Index
+
+Universität zu Köln 				   	   : 1
+Technische Hochschule Köln 				   : 2
+Cologne Business School					   : 3
+Deutsche Sporthochschule Köln 			   : 4
+Europäische Fachhochschule 				   : 5
+Hochschule Fresenius Köln 				   : 6
+Hochschule für Musik und Tanz Köln 		   : 7
+Hochschule Macromedia 					   : 8
+Internationale Filmschule Köln 			   : 9
+Katholische Hochschule Nordrhein-Westfalen : 10
+Kunsthochschule für Medien Köln 		   : 11
+Rheinische Fachhochschule Köln 			   : 12
+Fachhochschule der Wirtschaft 			   : 13
+`
 )
 
 /*
@@ -27,35 +46,72 @@ import (
 */
 
 var (
-	app          = kingpin.New("sport", "Register for Volleyball made easy")
-	register     = app.Command("register", "register player for today's course")
-	registerUser = register.Arg("user", "user to register").Required().Strings()
+	app            = kingpin.New("sport", "Register for Volleyball made easy")
+	register       = app.Command("register", "register player for today's course")
+	registerPlayer = register.Arg("player", "player to register").Required().Strings()
+
+	list    = app.Command("list", "list all available player")
+	listUni = list.Flag("list universities", "list all available universities").Short('u').Bool()
+
+	new         = app.Command("new", "add a new player")
+	newfName    = new.Flag("firstname", "first name of new player").Required().Short('f').String()
+	newlName    = new.Flag("lastname", "last name of new player").Required().Short('l').String()
+	newMatrikel = new.Flag("matrikel", "matrikel number of new player").Required().Short('m').String()
+	newEmail    = new.Flag("email", "email of new player").Required().Short('e').String()
+	newUni      = new.Flag("university", "index of university of new player \n see list -u for details").Required().Short('u').Int()
 )
 
 func main() {
+	player := loadPlayer()
 
-	rd := registerData{
-		vorname:    "Christian",
-		nachname:   "Hovenbitzer",
-		matrikel:   "271172024",
-		email:      "christian.hovenbitzer@gmx.net",
-		hochschule: 12,
+	switch kingpin.MustParse(app.Parse(os.Args[1:])) {
+	case register.FullCommand():
+		fmt.Print(registerPlayer)
+	case list.FullCommand():
+		if *listUni {
+			fmt.Print(unis)
+		} else {
+			for _, user := range *player.Data {
+				fmt.Println(user.Vorname)
+			}
+		}
+	case new.FullCommand():
+		rData := RegisterData{
+			Vorname:    *newfName,
+			Nachname:   *newlName,
+			Matrikel:   *newMatrikel,
+			Email:      *newEmail,
+			Hochschule: *newUni,
+		}
+		*player.Data = append(*player.Data, rData)
+		writePlayer(&player)
+		fmt.Printf("new Player added: \n %+v", rData)
 	}
 
-	requestData := newRequest(&rd)
+	/*
+		rd := registerData{
+			vorname:    "Christian",
+			nachname:   "Hovenbitzer",
+			matrikel:   "271172024",
+			email:      "christian.hovenbitzer@gmx.net",
+			hochschule: 12,
+		}
 
-	request := gorequest.New()
-	request.SetDebug(true)
+		requestData := newRequest(&rd)
 
-	// url = https://anmeldung.hochschulsport-koeln.de/inc/methods.php
-	_, body, errors := request.Post("127.0.0.1:8080/test").Send(requestData.jsonString()).End()
+		request := gorequest.New()
+		request.SetDebug(true)
 
-	if errors != nil {
-		fmt.Println(request.Data)
-		fmt.Println(errors)
-	} else {
-		fmt.Println(body)
-	}
+		// url = https://anmeldung.hochschulsport-koeln.de/inc/methods.php
+		_, body, errors := request.Post("127.0.0.1:8080/test").Send(requestData.jsonString()).End()
+
+		if errors != nil {
+			fmt.Println(request.Data)
+			fmt.Println(errors)
+		} else {
+			fmt.Println(body)
+		}
+	*/
 }
 
 // RequestData wraps the necessary data into a struct
@@ -72,28 +128,30 @@ type RequestData struct {
 	Office            string `json:"office"`
 }
 
-type registerData struct {
-	vorname    string
-	nachname   string
-	matrikel   string
-	email      string
-	hochschule int
+//RegisterData holds the necessary player specific data needed to register
+type RegisterData struct {
+	Vorname    string
+	Nachname   string
+	Matrikel   string
+	Email      string
+	Hochschule int
 }
 
-type player struct {
-	data []registerData
+// Player holds the registerData of all created player
+type Player struct {
+	Data *[]RegisterData
 }
 
-func newRequest(rD *registerData) RequestData {
+func newRequest(rD *RegisterData) RequestData {
 	return RequestData{
 		State:             "studentAnmelden",
 		TypeStudent:       "student",
 		OfferCourseID:     1733,
-		Vorname:           rD.vorname,
-		Nachname:          rD.nachname,
-		Matrikel:          rD.matrikel,
-		Email:             rD.email,
-		Hochschulen:       rD.hochschule,
+		Vorname:           rD.Vorname,
+		Nachname:          rD.Nachname,
+		Matrikel:          rD.Matrikel,
+		Email:             rD.Email,
+		Hochschulen:       rD.Hochschule,
 		Hochschulenextern: "null",
 		Office:            "null",
 	}
@@ -107,23 +165,24 @@ func (requestData RequestData) jsonString() string {
 	return string(mJSON)
 }
 
-func loadPlayer() player {
-	p := player{}
-	if _, err := os.Stat("player.json"); os.IsNotExist(err) {
-		writePlayer(&p)
+func loadPlayer() Player {
+	p := Player{Data: &[]RegisterData{}}
+
+	bPlayer, err := ioutil.ReadFile("player.json")
+	if err != nil {
+		handleError(err)
 		return p
 	}
-	bPlayer, err := ioutil.ReadFile("player.json")
 	handleError(err)
-	err = json.Unmarshal(bPlayer, p)
+	err = json.Unmarshal(bPlayer, &p)
 	handleError(err)
 	return p
 }
 
-func writePlayer(p *player) {
-	pJSON, err := json.Marshal(p)
+func writePlayer(p *Player) {
+	pJSON, err := json.Marshal(*p)
 	handleError(err)
-	err = ioutil.WriteFile("player.json", pJSON, 0644)
+	err = ioutil.WriteFile("player.json", pJSON, 0600)
 	handleError(err)
 }
 
