@@ -43,34 +43,6 @@ var (
 	}
 )
 
-func main() {
-	player := loadPlayer()
-
-	switch kingpin.MustParse(app.Parse(os.Args[1:])) {
-	case cmdRegister.FullCommand():
-		player.register(*argRegisterPlayer)
-	case list.FullCommand():
-		if *listUni {
-			printUniversities()
-		} else {
-			for _, user := range *player.Data {
-				fmt.Println(user.Vorname)
-			}
-		}
-	case new.FullCommand():
-		rData := RegisterData{
-			Vorname:    *newfName,
-			Nachname:   *newlName,
-			Matrikel:   *newMatrikel,
-			Email:      *newEmail,
-			Hochschule: *newUni,
-		}
-		*player.Data = append(*player.Data, rData)
-		writePlayer(&player)
-		fmt.Printf("new Player added: \n %s", rData.string())
-	}
-}
-
 // RequestData wraps the necessary data into a struct
 type RequestData struct {
 	State             string `json:"state"`
@@ -97,6 +69,34 @@ type RegisterData struct {
 // Player holds the registerData of all created player
 type Player struct {
 	Data *[]RegisterData
+}
+
+func main() {
+	player := loadPlayer()
+
+	switch kingpin.MustParse(app.Parse(os.Args[1:])) {
+	case cmdRegister.FullCommand():
+		player.register(*argRegisterPlayer)
+	case list.FullCommand():
+		if *listUni {
+			printUniversities()
+		} else {
+			for _, user := range *player.Data {
+				fmt.Println(user.Vorname)
+			}
+		}
+	case new.FullCommand():
+		rData := RegisterData{
+			Vorname:    *newfName,
+			Nachname:   *newlName,
+			Matrikel:   *newMatrikel,
+			Email:      *newEmail,
+			Hochschule: *newUni,
+		}
+		*player.Data = append(*player.Data, rData)
+		writePlayer(&player)
+		fmt.Printf("new Player added: \n %s", rData.string())
+	}
 }
 
 func newRequest(rD *RegisterData) RequestData {
