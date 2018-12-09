@@ -6,49 +6,15 @@ import (
 	"io/ioutil"
 	"os"
 
+	tm "github.com/buger/goterm"
+	"github.com/parnurzeal/gorequest"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
-const (
-	unis = `
-University								   : Index
-
-Universität zu Köln 				   	   : 1
-Technische Hochschule Köln 				   : 2
-Cologne Business School					   : 3
-Deutsche Sporthochschule Köln 			   : 4
-Europäische Fachhochschule 				   : 5
-Hochschule Fresenius Köln 				   : 6
-Hochschule für Musik und Tanz Köln 		   : 7
-Hochschule Macromedia 					   : 8
-Internationale Filmschule Köln 			   : 9
-Katholische Hochschule Nordrhein-Westfalen : 10
-Kunsthochschule für Medien Köln 		   : 11
-Rheinische Fachhochschule Köln 			   : 12
-Fachhochschule der Wirtschaft 			   : 13
-`
-)
-
-/*
-01 Universität zu Köln 						  : 1
-02 Technische Hochschule Köln 				  : 2
-06 Cologne Business School					  : 3
-07 Deutsche Sporthochschule Köln 			  : 4
-09 Europäische Fachhochschule 				  : 5
-08 Hochschule Fresenius Köln 				  : 6
-04 Hochschule für Musik und Tanz Köln 		  : 7
-10 Hochschule Macromedia 					  : 8
-13 Internationale Filmschule Köln 			  : 9
-05 Katholische Hochschule Nordrhein-Westfalen : 10
-12 Kunsthochschule für Medien Köln 			  : 11
-03 Rheinische Fachhochschule Köln 			  : 12
-11 Fachhochschule der Wirtschaft 			  : 13
-*/
-
 var (
-	app            = kingpin.New("sport", "Register for Volleyball made easy")
-	register       = app.Command("register", "register player for today's course")
-	registerPlayer = register.Arg("player", "player to register").Required().Strings()
+	app               = kingpin.New("sport", "Register for Volleyball made easy")
+	cmdRegister       = app.Command("register", "register player for today's course")
+	argRegisterPlayer = cmdRegister.Arg("player", "player to register").Required().Strings()
 
 	list    = app.Command("list", "list all available player")
 	listUni = list.Flag("list universities", "list all available universities").Short('u').Bool()
@@ -59,17 +25,33 @@ var (
 	newMatrikel = new.Flag("matrikel", "matrikel number of new player").Required().Short('m').String()
 	newEmail    = new.Flag("email", "email of new player").Required().Short('e').String()
 	newUni      = new.Flag("university", "index of university of new player \n see list -u for details").Required().Short('u').Int()
+
+	uniMap = map[string]int{
+		"Universität zu Köln":                        1,
+		"Technische Hochschule Köln":                 2,
+		"Cologne Business School":                    3,
+		"Deutsche Sporthochschule Köln":              4,
+		"Europäische Fachhochschule":                 5,
+		"Hochschule Fresenius Köln":                  6,
+		"Hochschule für Musik und Tanz Köln":         7,
+		"Hochschule Macromedia":                      8,
+		"Internationale Filmschule Köln":             9,
+		"Katholische Hochschule Nordrhein-Westfalen": 10,
+		"Kunsthochschule für Medien Köln":            11,
+		"Rheinische Fachhochschule Köln":             12,
+		"Fachhochschule der Wirtschaft":              13,
+	}
 )
 
 func main() {
 	player := loadPlayer()
 
 	switch kingpin.MustParse(app.Parse(os.Args[1:])) {
-	case register.FullCommand():
-		fmt.Print(registerPlayer)
+	case cmdRegister.FullCommand():
+		player.register(*argRegisterPlayer)
 	case list.FullCommand():
 		if *listUni {
-			fmt.Print(unis)
+			printUniversities()
 		} else {
 			for _, user := range *player.Data {
 				fmt.Println(user.Vorname)
@@ -85,33 +67,8 @@ func main() {
 		}
 		*player.Data = append(*player.Data, rData)
 		writePlayer(&player)
-		fmt.Printf("new Player added: \n %+v", rData)
+		fmt.Printf("new Player added: \n %s", rData.string())
 	}
-
-	/*
-		rd := registerData{
-			vorname:    "Christian",
-			nachname:   "Hovenbitzer",
-			matrikel:   "271172024",
-			email:      "christian.hovenbitzer@gmx.net",
-			hochschule: 12,
-		}
-
-		requestData := newRequest(&rd)
-
-		request := gorequest.New()
-		request.SetDebug(true)
-
-		// url = https://anmeldung.hochschulsport-koeln.de/inc/methods.php
-		_, body, errors := request.Post("127.0.0.1:8080/test").Send(requestData.jsonString()).End()
-
-		if errors != nil {
-			fmt.Println(request.Data)
-			fmt.Println(errors)
-		} else {
-			fmt.Println(body)
-		}
-	*/
 }
 
 // RequestData wraps the necessary data into a struct
@@ -190,4 +147,70 @@ func handleError(e error) {
 	if e != nil {
 		fmt.Println(e.Error())
 	}
+}
+
+func printUniversities() {
+	t := tm.NewTable(0, 10, 5, ' ', 0)
+	fmt.Fprintf(t, "University\tIndex\n")
+	fmt.Fprint(t, "\n")
+	for uni, index := range uniMap {
+		fmt.Fprintf(t, "%s\t%d\n", uni, index)
+	}
+	fmt.Print(t.String())
+}
+
+func (rd *RegisterData) string() string {
+	uni, _ := mapkey(uniMap, rd.Hochschule)
+	t := tm.NewTable(0, 10, 5, ' ', 0)
+	fmt.Fprintf(t, "Vorname\t%s\n", rd.Vorname)
+	fmt.Fprintf(t, "Nachname\t%s\n", rd.Nachname)
+	fmt.Fprintf(t, "Matrikel\t%s\n", rd.Matrikel)
+	fmt.Fprintf(t, "Email\t%s\n", rd.Email)
+	fmt.Fprintf(t, "University\t%s\n", uni)
+	return t.String()
+}
+
+func mapkey(m map[string]int, value int) (key string, ok bool) {
+	for k, v := range m {
+		if v == value {
+			key = k
+			ok = true
+			return
+		}
+	}
+	return
+}
+
+func (p *Player) register(names []string) {
+	pToRegister := filter(*p.Data, func(i int, rd RegisterData) bool {
+		return rd.Vorname == names[i]
+	})
+
+	for _, p := range pToRegister {
+		requestData := newRequest(&p)
+
+		request := gorequest.New()
+		request.SetDebug(true)
+
+		// url = https://anmeldung.hochschulsport-koeln.de/inc/methods.php
+		_, body, errors := request.Post("127.0.0.1:8080/test").Send(requestData.jsonString()).End()
+
+		if errors != nil {
+			fmt.Println(request.Data)
+			fmt.Println(errors)
+		} else {
+			fmt.Println(body)
+		}
+	}
+
+}
+
+func filter(vs []RegisterData, f func(int, RegisterData) bool) []RegisterData {
+	vsf := make([]RegisterData, 0)
+	for i, v := range vs {
+		if f(i, v) {
+			vsf = append(vsf, v)
+		}
+	}
+	return vsf
 }
