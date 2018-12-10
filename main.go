@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"time"
 
+	"github.com/alecthomas/kingpin"
+	"github.com/apoorvam/goterminal"
 	tm "github.com/buger/goterm"
 	"github.com/parnurzeal/gorequest"
-	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
@@ -76,6 +78,11 @@ func main() {
 
 	switch kingpin.MustParse(app.Parse(os.Args[1:])) {
 	case cmdRegister.FullCommand():
+		defer fmt.Println("leaving main..")
+		ready := make(chan bool)
+
+		scheduleRegistration(ready)
+		<-ready
 		player.register(*argRegisterPlayer)
 	case list.FullCommand():
 		if *listUni {
@@ -95,7 +102,7 @@ func main() {
 		}
 		*player.Data = append(*player.Data, rData)
 		writePlayer(&player)
-		fmt.Printf("new Player added: \n %s", rData.string())
+		fmt.Printf("new Player added: \n%s", rData.string())
 	}
 }
 
@@ -187,6 +194,7 @@ func (p *Player) register(names []string) {
 	})
 
 	for _, p := range pToRegister {
+		fmt.Printf("registering %s\n", p.Vorname)
 		requestData := newRequest(&p)
 
 		request := gorequest.New()
@@ -213,4 +221,60 @@ func filter(vs []RegisterData, f func(int, RegisterData) bool) []RegisterData {
 		}
 	}
 	return vsf
+}
+
+func calculateRegisterStart() time.Time {
+	tuesday := time.Tuesday
+	now := time.Now()
+	wDay := now.Weekday()
+	diff := 0
+	if wDay < tuesday {
+		diff = int(tuesday) - int(wDay)
+	}
+	if wDay > tuesday {
+		diff = 7 - (int(wDay) - int(tuesday))
+	}
+	return time.Date(now.Year(), now.Month(), now.Day(), 15, 30, 10, 0, now.Location()).AddDate(0, 0, diff)
+}
+
+func scheduleRegistration(ready chan bool) {
+	writer := goterminal.New(os.Stdout)
+	ticker := time.NewTicker(time.Second)
+	done := make(chan bool)
+	test := time.Now().Add(5 * time.Second)
+	defer writer.Reset()
+
+	for {
+		select {
+		case <-done:
+			go func() {
+				fmt.Fprintln(writer, "registering now...")
+				writer.Print()
+				ready <- true
+			}()
+			return
+		case t := <-ticker.C:
+			go func() {
+				countdown := test.Sub(t) //calculateRegisterStart().Sub(t)
+				writer.Clear()
+				fmt.Fprint(writer, fmtDuration(countdown))
+				writer.Print()
+				if countdown.Seconds() <= 0 {
+					ticker.Stop()
+					done <- true
+				}
+			}()
+		}
+	}
+
+}
+
+func fmtDuration(d time.Duration) string {
+	d = d.Round(time.Second)
+	h := d / time.Hour
+	d -= h * time.Hour
+	m := d / time.Minute
+	d -= m * time.Minute
+	s := d / time.Second
+	return fmt.Sprintf("%02d:%02d:%02d until registration\n", h, m, s)
 }
