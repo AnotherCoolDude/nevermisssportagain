@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net/url"
 	"os"
 	"time"
 
@@ -49,7 +50,7 @@ var (
 type RequestData struct {
 	State             string `json:"state"`
 	TypeStudent       string `json:"type"`
-	OfferCourseID     int    `json:"offerCourseID"`
+	OfferCourseID     string `json:"offerCourseID"`
 	Vorname           string `json:"vorname"`
 	Nachname          string `json:"nachname"`
 	Matrikel          string `json:"matrikel"`
@@ -110,7 +111,7 @@ func newRequest(rD *RegisterData) RequestData {
 	return RequestData{
 		State:             "studentAnmelden",
 		TypeStudent:       "student",
-		OfferCourseID:     1733,
+		OfferCourseID:     "+17+",
 		Vorname:           rD.Vorname,
 		Nachname:          rD.Nachname,
 		Matrikel:          rD.Matrikel,
@@ -121,12 +122,29 @@ func newRequest(rD *RegisterData) RequestData {
 	}
 }
 
-func (requestData RequestData) jsonString() string {
-	mJSON, err := json.Marshal(requestData)
+func (rd RequestData) jsonString() string {
+	mJSON, err := json.Marshal(rd)
 	if err != nil {
 		fmt.Printf("could not marshal struct: %s", err)
 	}
 	return string(mJSON)
+}
+
+func (rd *RequestData) formEncoded() url.Values {
+	form := url.Values{
+		"state":             {rd.State},
+		"type":              {rd.TypeStudent},
+		"offerCourseID":     {rd.OfferCourseID},
+		"vorname":           {rd.Vorname},
+		"nachname":          {rd.Nachname},
+		"matrikel":          {rd.Matrikel},
+		"email":             {rd.Email},
+		"hochschulen":       {string(rd.Hochschulen)},
+		"hochschulenextern": {rd.Hochschulenextern},
+		"office":            {rd.Office},
+	}
+	fmt.Print(form)
+	return form
 }
 
 func loadPlayer() Player {
@@ -199,9 +217,10 @@ func (p *Player) register(names []string) {
 
 		request := gorequest.New()
 		request.SetDebug(true)
-
+		request.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+		request.FormData = requestData.formEncoded()
 		// url = https://anmeldung.hochschulsport-koeln.de/inc/methods.php
-		_, body, errors := request.Post("127.0.0.1:8080/test").Send(requestData.jsonString()).End()
+		_, body, errors := request.Post("127.0.0.1:8080/test").End()
 
 		if errors != nil {
 			fmt.Println(request.Data)
