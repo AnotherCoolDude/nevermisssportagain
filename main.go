@@ -91,6 +91,7 @@ func main() {
 		ready := make(chan bool)
 		scheduleRegistration(ready)
 		<-ready
+		close(ready)
 		var wg sync.WaitGroup
 		player.register(*argRegisterPlayer, &wg)
 		wg.Wait()
