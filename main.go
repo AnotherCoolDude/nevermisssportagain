@@ -4,14 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/alecthomas/kingpin"
 	"github.com/apoorvam/goterminal"
 	tm "github.com/buger/goterm"
-	"github.com/parnurzeal/gorequest"
 )
 
 var (
@@ -76,12 +77,16 @@ type Player struct {
 
 func main() {
 	player := loadPlayer()
-
+	defer fmt.Println("leaving main..")
 	switch kingpin.MustParse(app.Parse(os.Args[1:])) {
 	case cmdRegister.FullCommand():
-		defer fmt.Println("leaving main..")
+		fmt.Println("scheduling registration for player: ")
+		for _, p := range *argRegisterPlayer {
+			if player.contains(p) {
+				fmt.Println(p)
+			}
+		}
 		ready := make(chan bool)
-
 		scheduleRegistration(ready)
 		<-ready
 		player.register(*argRegisterPlayer)
@@ -139,11 +144,10 @@ func (rd *RequestData) formEncoded() url.Values {
 		"nachname":          {rd.Nachname},
 		"matrikel":          {rd.Matrikel},
 		"email":             {rd.Email},
-		"hochschulen":       {string(rd.Hochschulen)},
+		"hochschulen":       {strconv.Itoa(rd.Hochschulen)},
 		"hochschulenextern": {rd.Hochschulenextern},
 		"office":            {rd.Office},
 	}
-	fmt.Print(form)
 	return form
 }
 
@@ -206,46 +210,66 @@ func mapkey(m map[string]int, value int) (key string, ok bool) {
 	return
 }
 
+func (p *Player) contains(name string) bool {
+	for _, p := range *p.Data {
+		return p.Vorname == name
+	}
+	return false
+}
+
 func (p *Player) register(names []string) {
-	fmt.Printf("names: %v\n", names)
-	pToRegister := filter(*p.Data, func(i int, rd RegisterData) bool {
-		return rd.Vorname == names[i]
+	pToRegister := filter(*p.Data, func(rd RegisterData) bool {
+		return contains(names, rd.Vorname)
 	})
-	fmt.Printf("pToRegister: %v\n", pToRegister)
+
+	respc, errc := make(chan string), make(chan error)
+
 	for _, p := range pToRegister {
-		fmt.Printf("registering %s\n", p.Vorname)
-		requestData := newRequest(&p)
+		go func(p RegisterData) {
+			fmt.Printf("registering %s\n", p.Vorname)
+			rd := newRequest(&p)
+			form := rd.formEncoded()
+			// url = https://anmeldung.hochschulsport-koeln.de/inc/methods.php
+			// testurl = https://ptsv2.com/t/xrjhk-1544617474/post
+			resp, err := http.PostForm("https://ptsv2.com/t/xrjhk-1544617474/post", form)
 
-		request := gorequest.New()
-		request.SetDebug(true)
-		request.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-		request.FormData = requestData.formEncoded()
-		// url = https://anmeldung.hochschulsport-koeln.de/inc/methods.php
-		_, body, errors := request.Post("/t/kntu3-1544613998/post").End()
+			errc <- err
 
-		if errors != nil {
-			fmt.Println(request.Data)
-			fmt.Println(errors)
-		} else {
-			fmt.Println(body)
+			defer resp.Body.Close()
+			body, err := ioutil.ReadAll(resp.Body)
+
+			errc <- err
+			respc <- string(body)
+		}(p)
+	}
+
+	for range pToRegister {
+		select {
+		case err := <-errc:
+			handleError(err)
+		case resp := <-respc:
+			fmt.Println(resp)
 		}
 	}
 
 }
 
-func filter(vs []RegisterData, f func(int, RegisterData) bool) []RegisterData {
+func filter(vs []RegisterData, f func(RegisterData) bool) []RegisterData {
 	vsf := make([]RegisterData, 0)
-	fmt.Printf("vs: %v\n", vs)
-	for i, v := range vs {
-
-		if f(i, v) {
-			fmt.Printf("index: %d, filtered Name: %v\n", i, v)
+	for _, v := range vs {
+		if f(v) {
 			vsf = append(vsf, v)
 		}
-		fmt.Printf("vsf: %v\n", vsf)
 	}
 
 	return vsf
+}
+
+func contains(slice []string, value string) bool {
+	for _, v := range slice {
+		return v == value
+	}
+	return false
 }
 
 func calculateRegisterStart() time.Time {
