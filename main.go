@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/alecthomas/kingpin"
@@ -77,19 +78,22 @@ type Player struct {
 
 func main() {
 	player := loadPlayer()
+
 	defer fmt.Println("leaving main..")
 	switch kingpin.MustParse(app.Parse(os.Args[1:])) {
 	case cmdRegister.FullCommand():
 		fmt.Println("scheduling registration for player: ")
 		for _, p := range *argRegisterPlayer {
 			if player.contains(p) {
-				fmt.Println(p)
+				fmt.Printf("found %s\n", p)
 			}
 		}
 		ready := make(chan bool)
 		scheduleRegistration(ready)
 		<-ready
-		player.register(*argRegisterPlayer)
+		var wg sync.WaitGroup
+		player.register(*argRegisterPlayer, &wg)
+		wg.Wait()
 	case list.FullCommand():
 		if *listUni {
 			printUniversities()
@@ -172,6 +176,12 @@ func writePlayer(p *Player) {
 	handleError(err)
 }
 
+func (p *Player) log() {
+	for _, p := range *p.Data {
+		fmt.Println(p.string())
+	}
+}
+
 func handleError(e error) {
 	if e != nil {
 		fmt.Println(e.Error())
@@ -211,21 +221,23 @@ func mapkey(m map[string]int, value int) (key string, ok bool) {
 }
 
 func (p *Player) contains(name string) bool {
-	for _, p := range *p.Data {
-		return p.Vorname == name
+	for _, existingPlayer := range *p.Data {
+		if existingPlayer.Vorname == name {
+			return true
+		}
 	}
 	return false
 }
 
-func (p *Player) register(names []string) {
+func (p *Player) register(names []string, wg *sync.WaitGroup) {
+
 	pToRegister := filter(*p.Data, func(rd RegisterData) bool {
 		return contains(names, rd.Vorname)
 	})
-
-	respc, errc := make(chan string), make(chan error)
-
 	for _, p := range pToRegister {
-		go func(p RegisterData) {
+		wg.Add(1)
+		go func(wg *sync.WaitGroup, p RegisterData) {
+			defer wg.Done()
 			fmt.Printf("registering %s\n", p.Vorname)
 			rd := newRequest(&p)
 			form := rd.formEncoded()
@@ -233,25 +245,13 @@ func (p *Player) register(names []string) {
 			// testurl = https://ptsv2.com/t/xrjhk-1544617474/post
 			resp, err := http.PostForm("https://ptsv2.com/t/xrjhk-1544617474/post", form)
 
-			errc <- err
-
-			defer resp.Body.Close()
 			body, err := ioutil.ReadAll(resp.Body)
+			defer resp.Body.Close()
 
-			errc <- err
-			respc <- string(body)
-		}(p)
-	}
-
-	for range pToRegister {
-		select {
-		case err := <-errc:
 			handleError(err)
-		case resp := <-respc:
-			fmt.Println(resp)
-		}
+			fmt.Println(string(body))
+		}(wg, p)
 	}
-
 }
 
 func filter(vs []RegisterData, f func(RegisterData) bool) []RegisterData {
@@ -267,7 +267,9 @@ func filter(vs []RegisterData, f func(RegisterData) bool) []RegisterData {
 
 func contains(slice []string, value string) bool {
 	for _, v := range slice {
-		return v == value
+		if v == value {
+			return true
+		}
 	}
 	return false
 }
