@@ -60,7 +60,7 @@ type RequestData struct {
 	Office            string `json:"office"`
 }
 
-//RegisterData holds the necessary player specific data needed to register
+//RegisterData holds the necessary, player specific data needed to register
 type RegisterData struct {
 	Vorname    string
 	Nachname   string
@@ -207,10 +207,11 @@ func mapkey(m map[string]int, value int) (key string, ok bool) {
 }
 
 func (p *Player) register(names []string) {
+	fmt.Printf("names: %v\n", names)
 	pToRegister := filter(*p.Data, func(i int, rd RegisterData) bool {
 		return rd.Vorname == names[i]
 	})
-
+	fmt.Printf("pToRegister: %v\n", pToRegister)
 	for _, p := range pToRegister {
 		fmt.Printf("registering %s\n", p.Vorname)
 		requestData := newRequest(&p)
@@ -220,7 +221,7 @@ func (p *Player) register(names []string) {
 		request.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 		request.FormData = requestData.formEncoded()
 		// url = https://anmeldung.hochschulsport-koeln.de/inc/methods.php
-		_, body, errors := request.Post("127.0.0.1:8080/test").End()
+		_, body, errors := request.Post("/t/kntu3-1544613998/post").End()
 
 		if errors != nil {
 			fmt.Println(request.Data)
@@ -234,11 +235,16 @@ func (p *Player) register(names []string) {
 
 func filter(vs []RegisterData, f func(int, RegisterData) bool) []RegisterData {
 	vsf := make([]RegisterData, 0)
+	fmt.Printf("vs: %v\n", vs)
 	for i, v := range vs {
+
 		if f(i, v) {
+			fmt.Printf("index: %d, filtered Name: %v\n", i, v)
 			vsf = append(vsf, v)
 		}
+		fmt.Printf("vsf: %v\n", vsf)
 	}
+
 	return vsf
 }
 
@@ -260,7 +266,7 @@ func scheduleRegistration(ready chan bool) {
 	writer := goterminal.New(os.Stdout)
 	ticker := time.NewTicker(time.Second)
 	done := make(chan bool)
-	test := time.Now().Add(5 * time.Second)
+	test := time.Now().Add(3 * time.Second)
 	defer writer.Reset()
 
 	for {
